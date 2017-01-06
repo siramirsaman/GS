@@ -4,7 +4,6 @@
 
 int main(void)
 {	
-	//ADD();
 
 	GS();
 
