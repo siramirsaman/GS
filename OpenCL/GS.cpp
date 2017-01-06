@@ -2,6 +2,15 @@
 #include "GS.h"
 
 
+/** @brief CPU Implementation of Gauss Seidel for solving a square 
+ *         system of linear equations A.x=b 
+ *  @param x array of unknowns [N]
+ *  @param b array of constant terms [N]
+ *  @param A array of coefficients [N*N]
+ *  @param N size of arrays
+ *  @param tol tolerance
+ *  @return void
+ */
 void GS_CPU(real x[], const size_t N, const real A[], const real b[], const real tol)
 {
 	int counter = 1;
@@ -27,6 +36,14 @@ void GS_CPU(real x[], const size_t N, const real A[], const real b[], const real
 	}
 }
 
+
+/** @brief Initialize or reset an example for a simple linear A.x=b
+ *  @param x array of unknowns [N]
+ *  @param b array of constant terms [N]
+ *  @param A array of coefficients [N*N]
+ *  @param N size of arrays
+ *  @return void
+ */
 void reset_arrays(real* A, real* x, real* b, int N)
 {
 	b[0] = 1100;
@@ -58,152 +75,187 @@ void reset_arrays(real* A, real* x, real* b, int N)
 
 #define safe_call(a) safe_call_f(a, __LINE__)
 
+/** @brief Error checking of OpenCL calls
+ *  @param code OpenCL routine error code
+ *  @param line code line number to be printed on error
+ *  @return void
+ */
 void safe_call_f(cl_int code, size_t line)
 {
 	if (code)
 	{
-		printf("Error(%d): %d\n", line, code);
-		exit(1);
+		printf("Call returned error code(%d): %d\n", line, code);
+		exit(EXIT_FAILURE);
 	}
 }
 
 
+/** @brief main wrapper
+ */
 int GS(void)
 {
-	int N = 5; //5*64
-	real tol = 1e-4;
-	real omega = 1.0;
+	int N = 2 * 64; /**< size of arrays */
+	real tol = 1e-4; /**< tolerance */
+	real omega = 1.0; /**< successive over-relaxation (SOR) relaxation factor */
 
-	size_t global_item_size = N;
-	size_t local_item_size = 5; //64
+	size_t global_item_size = N; /**< global_work_size for kernel_GS */
+	size_t local_item_size = 64; /**< local_work_size for kernel_GS */
 
-	size_t block_size = 5; //64
-	size_t num_blocks = N;
+	size_t block_size = 64; /**< global_work_size for block_sum */
+	size_t num_blocks = N; /**< local_work_size for block_sum*/
 
-	real * A = (real *)malloc(sizeof(real) *N*N);
-	real * x = (real *)malloc(sizeof(real) *N);
-	real * b = (real *)malloc(sizeof(real) *N);
-	real * resid = (real *)malloc(sizeof(real) *N);
-	real * partial_sums = (real *)malloc(sizeof(real) *num_blocks);
+	real * A = (real *)malloc(sizeof(real) *N*N); /**< array of coefficients [N*N] */
+	real * x = (real *)malloc(sizeof(real) *N); /**< array of unknowns [N] */
+	real * b = (real *)malloc(sizeof(real) *N); /**< array of constant terms [N] */
+	real * resid = (real *)malloc(sizeof(real) *N); /**< array of residuals */
+	real * partial_sums = (real *)malloc(sizeof(real) *num_blocks); /**< array of residual summations */
 	
+	/* Initialize a simple linear A.x=b */
 	reset_arrays(A, x, b, N);
 
-	// Load the kernel source code into the array source_str
-	FILE *fp;
-	char *source_str;
-	size_t source_size;
-
+	/* Loading kernel code */
+	FILE *fp; /**< kernel file pointer */
+	char *source_str; /**< kernel string to be loaded from file */
+	size_t source_size; /**< source size */
+	/* Reading kernel source file */
 	fp = fopen("GS.cl", "r");
 	if (!fp)
 	{
 		fprintf(stderr, "Failed to load kernel.\n");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	source_str = (char*)malloc(MAX_SOURCE_SIZE);
 	source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
 	fclose(fp);
 
-	// Get platform and device information
-	cl_platform_id platform_id = NULL;
-	cl_device_id device_id = NULL;
-	cl_uint ret_num_devices;
-	cl_uint ret_num_platforms;
-	cl_int ret;
-	safe_call(clGetPlatformIDs(1, &platform_id, &ret_num_platforms));
-	safe_call(clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, &ret_num_devices));
+	/* Platform & device info */
+	cl_platform_id platform_id = NULL; /**< list of OpenCL platforms */
+	cl_device_id device_id = NULL; /**< list of OpenCL devices */
+	cl_uint num_devices; /**< number of OpenCL devices */
+	cl_uint num_platforms; /**< number of OpenCL platforms */
+	cl_int errcode_ret; /**< error code, not checked here */
+	safe_call(clGetPlatformIDs(1, &platform_id, &num_platforms));
+	safe_call(clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, &num_devices));
 
-	// Create an OpenCL context
-	cl_context context = clCreateContext(NULL, 1, &device_id, NULL, NULL, &ret);
+	/* Creating OpenCL context 
+	 * @param context OpenCL context
+	 */
+	cl_context context = clCreateContext(NULL, 1, &device_id, NULL, NULL, &errcode_ret);
 
-	// Create a command queue
-	cl_command_queue command_queue = clCreateCommandQueue(context, device_id, 0, &ret);
+	/* Creating command queue
+	* @param command_queue command queue
+	*/
+	cl_command_queue command_queue = clCreateCommandQueue(context, device_id, 0, &errcode_ret);
 
-	// Create memory buffers on the device for each vector 
-	cl_mem a_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY,			 sizeof(real) *N*N,			NULL, &ret);
-	cl_mem x_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,			 sizeof(real) *N,			NULL, &ret);
-	cl_mem b_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY,			 sizeof(real) *N,			NULL, &ret);
-	cl_mem resid_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,		 sizeof(real) *N,			NULL, &ret);
-	cl_mem partial_sums_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(real) *num_blocks,	NULL, &ret);
+	/* Creating vector memory buffers
+	* @param a_mem_obj memory buffer for \a A (read only)
+	* @param x_mem_obj memory buffer for \a x (read and write)
+	* @param b_mem_obj memory buffer for \a b (read only)
+	* @param resid_mem_obj memory buffer for \a resid (read and write)
+	* @param partial_sums_mem_obj memory buffer for \a partial_sums (read and write)
+	*/
+	cl_mem a_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY,			 sizeof(real) *N*N,			NULL, &errcode_ret);
+	cl_mem x_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,			 sizeof(real) *N,			NULL, &errcode_ret);
+	cl_mem b_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY,			 sizeof(real) *N,			NULL, &errcode_ret);
+	cl_mem resid_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE,		 sizeof(real) *N,			NULL, &errcode_ret);
+	cl_mem partial_sums_mem_obj = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(real) *num_blocks,	NULL, &errcode_ret);
 	
-
+	/*
+	 * @param region offset and size (bytes) in buffer
+	 */
 	cl_buffer_region region;
 	region.origin = 0;
 	region.size = num_blocks * sizeof(real);
-	cl_mem partial_sums_mem_obj_num_blocks = clCreateSubBuffer(partial_sums_mem_obj, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &region, &ret);
 
-	// Copy the lists A and B to their respective memory buffers
+	/* Creating a sub-buffer from existing buffers (offset in array)
+	* @param partial_sums_mem_obj_num_blocks offset memory buffer for \a partial_sums_mem_obj by \a num_blocks bytes (read and write)
+	*/
+	cl_mem partial_sums_mem_obj_num_blocks = clCreateSubBuffer(partial_sums_mem_obj, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &region, &errcode_ret);
+
+	/* Copy arrays to device memory buffers */
 	safe_call(clEnqueueWriteBuffer(command_queue, a_mem_obj, CL_TRUE, 0, sizeof(real) *N*N, A, 0, NULL, NULL));
 	safe_call(clEnqueueWriteBuffer(command_queue, x_mem_obj, CL_TRUE, 0, sizeof(real) *N,	x, 0, NULL, NULL));
 	safe_call(clEnqueueWriteBuffer(command_queue, b_mem_obj, CL_TRUE, 0, sizeof(real) *N,	b, 0, NULL, NULL));
 
-	// Create a program from the kernel source
-	cl_program program = clCreateProgramWithSource(context, 1, (const char **)&source_str, (const size_t *)&source_size, &ret);
+	/* Creating program object for context 
+	 * @param program program object (compilation target)
+	 */
+	cl_program program = clCreateProgramWithSource(context, 1, (const char **)&source_str, (const size_t *)&source_size, &errcode_ret);
 
-	// Build the program
+	/* Building the target program */
 	safe_call(clBuildProgram(program, 1, &device_id, NULL, NULL, NULL));
 
-	// Create the OpenCL kernel
-	cl_kernel kernel_GS =		   clCreateKernel(program, "kernel_GS", &ret);
-	cl_kernel kernel_block_sum_1 = clCreateKernel(program, "block_sum", &ret);
-	cl_kernel kernel_block_sum_2 = clCreateKernel(program, "block_sum", &ret);
+	/* Creating OpenCL kernel
+	* @param kernel_GS kernel object for \fn kernel_GS
+	* @param kernel_block_sum_1 first kernel object for \fn block_sum
+	* @param kernel_block_sum_2 second kernel object for \fn block_sum
+	*/
+	cl_kernel kernel_GS =		   clCreateKernel(program, "kernel_GS", &errcode_ret);
+	cl_kernel kernel_block_sum_1 = clCreateKernel(program, "block_sum", &errcode_ret);
+	cl_kernel kernel_block_sum_2 = clCreateKernel(program, "block_sum", &errcode_ret);
 
-	// Set the arguments of the kernel
+	/*
+	 * kernel \a kernel_GS arguments
+	 */
 	safe_call(clSetKernelArg(kernel_GS, 0, sizeof(cl_mem),	(void *)&x_mem_obj));
 	safe_call(clSetKernelArg(kernel_GS, 1, sizeof(cl_mem),	(void *)&a_mem_obj));
 	safe_call(clSetKernelArg(kernel_GS, 2, sizeof(cl_mem),	(void *)&b_mem_obj));
 	safe_call(clSetKernelArg(kernel_GS, 3, sizeof(cl_mem),	(void *)&resid_mem_obj));
 	safe_call(clSetKernelArg(kernel_GS, 4, sizeof(int),		(void *)&N));
 	safe_call(clSetKernelArg(kernel_GS, 5, sizeof(real), (void *)&omega));
-	safe_call(clSetKernelArg(kernel_GS, 6, N * sizeof(real), NULL));
+	safe_call(clSetKernelArg(kernel_GS, 6, N * sizeof(real), NULL)); /**< dynamic shared memory */
 	
-
+	/*
+	* kernel \a kernel_block_sum_1 arguments
+	*/
 	safe_call(clSetKernelArg(kernel_block_sum_1, 0, sizeof(cl_mem), (void *)&resid_mem_obj));
 	safe_call(clSetKernelArg(kernel_block_sum_1, 1, sizeof(cl_mem), (void *)&partial_sums_mem_obj));
 	safe_call(clSetKernelArg(kernel_block_sum_1, 2, sizeof(int), (void *)&N));
-	safe_call(clSetKernelArg(kernel_block_sum_1, 3, block_size * sizeof(real), NULL));
+	safe_call(clSetKernelArg(kernel_block_sum_1, 3, block_size * sizeof(real), NULL)); /**< dynamic shared memory */
 
-
+	/*
+	* kernel \a kernel_block_sum_2 arguments
+	*/
 	safe_call(clSetKernelArg(kernel_block_sum_2, 0, sizeof(cl_mem), (void *)&resid_mem_obj));
 	safe_call(clSetKernelArg(kernel_block_sum_2, 1, sizeof(cl_mem), (void *)&partial_sums_mem_obj_num_blocks));
 	safe_call(clSetKernelArg(kernel_block_sum_2, 2, sizeof(int), (void *)&num_blocks));
-	safe_call(clSetKernelArg(kernel_block_sum_2, 3, num_blocks * sizeof(real), NULL));
+	safe_call(clSetKernelArg(kernel_block_sum_2, 3, num_blocks * sizeof(real), NULL)); /**< dynamic shared memory */
 
 
-
-	real resid_host = 10;
+	real resid_host = 10; /**< residual value on host */
 	while (resid_host > tol)
 	{
+		/* Lunching kernel \a kernel_GS	*/
 		safe_call(clEnqueueNDRangeKernel(command_queue, kernel_GS,			1, NULL, &global_item_size, &local_item_size,	0, NULL, NULL));
-
+		/* Lunching kernel \a kernel_block_sum_1	*/
 		safe_call(clEnqueueNDRangeKernel(command_queue, kernel_block_sum_1, 1, NULL, &global_item_size, &block_size,		0, NULL, NULL));
-
+		/* Lunching kernel \a kernel_block_sum_2	*/
 		safe_call(clEnqueueNDRangeKernel(command_queue, kernel_block_sum_2, 1, NULL, &num_blocks,		&local_item_size,	0, NULL, NULL));
-
-		safe_call(clEnqueueReadBuffer(command_queue, partial_sums_mem_obj, CL_TRUE, 0, sizeof(real), &resid_host, 0, NULL, NULL));
-
+		/* Read \a partial_sums_mem_obj buffer object to host \a resid_host */
+		safe_call(clEnqueueReadBuffer(command_queue, partial_sums_mem_obj, CL_FALSE, 0, sizeof(real), &resid_host, 0, NULL, NULL));
 	}
 
 	
-	// Force the command queue to get processed, wait until all commands are complete
+	/* Block till \a command_queue finishes */
 	clFinish(command_queue);
 
-	// Read the memory buffer x on the device to the local variable x_out
-	real *x_out = (real*)malloc(sizeof(real) * N);
+	real *x_out = (real*)malloc(sizeof(real) * N); /**< array of solved unknowns for \a x */
+	/* Read \a x from device to host variable \a x_out */
 	safe_call(clEnqueueReadBuffer(command_queue, x_mem_obj, CL_TRUE, 0, N * sizeof(real), x_out, 0, NULL, NULL));
 	
-	// Display the result to the screen
+	/* Printing GPU results on screen */
 	for (size_t i = 0; i < N; i++)
 		printf("x_out[%d] = %f\n", i, x_out[i]);
-
 	printf("###########################\n###########################\n###########################\n");
-
+	/* Reset to the simple linear A.x=b */
 	reset_arrays(A, x, b, N);
+	/* Run CPU Implementation of Gauss Seidel */
 	GS_CPU(x, N, A, b, tol);
+	/* Printing CPU results on screen */
 	for (size_t i = 0; i < N; i++)
 		printf("CPU: x_out[%d] = %f\n", i, x[i]);
 
-
-	// Clean up
+	/* OpenCL cleaning up */
 	safe_call(clFlush(command_queue));
 	safe_call(clFinish(command_queue));
 	safe_call(clReleaseKernel(kernel_GS));
@@ -217,6 +269,8 @@ int GS(void)
 	safe_call(clReleaseMemObject(partial_sums_mem_obj));
 	safe_call(clReleaseCommandQueue(command_queue));
 	safe_call(clReleaseContext(context));
+
+	/* Free memory */
 	free(A);
 	free(x);
 	free(x_out);
