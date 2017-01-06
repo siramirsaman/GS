@@ -96,7 +96,7 @@ int GS(void)
 {
 	int N = 2 * 64; /**< size of arrays */
 	real tol = 1e-4; /**< tolerance */
-	real omega = 1.0; /**< successive over-relaxation (SOR) relaxation factor */
+	real omega = 1.0; /**< Successive Over-Relaxation (SOR) relaxation factor */
 
 	size_t global_item_size = N; /**< global_work_size for kernel_GS */
 	size_t local_item_size = 64; /**< local_work_size for kernel_GS */

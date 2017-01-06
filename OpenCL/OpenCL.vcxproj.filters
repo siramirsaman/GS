@@ -14,9 +14,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="add.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -25,17 +22,11 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="add.cl">
-      <Filter>Kernels</Filter>
-    </None>
     <None Include="GS.cl">
       <Filter>Kernels</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="add.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="GS.h">
       <Filter>Header Files</Filter>
     </ClInclude>

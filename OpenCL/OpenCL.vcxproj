@@ -155,16 +155,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="add.cpp" />
     <ClCompile Include="GS.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="add.cl" />
     <None Include="GS.cl" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="add.h" />
     <ClInclude Include="GS.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -9,24 +9,37 @@
 	typedef float real;
 #endif
 
-#define A(i,j) A[i+j*N]
+#define A(ix,j) A[ix+j*N]
 
 
-__kernel void kernel_GS(__global real* x, __global const real* A, __global const real* b, __global real* resid, const int N, const real omega, __local real *x_shared)
+/** @brief GPU Implementation of relaxed Gauss Seidel for solving a square
+ *         system of linear equations A.x=b
+ *  @param x array of unknowns [N]
+ *  @param A array of coefficients [N*N]
+ *  @param b array of constant terms [N]
+ *  @param resid array of residuals
+ *  @param N size of arrays
+ *  @param omega Successive Over-Relaxation (SOR) relaxation factor
+ *  @param x_shared Shared memory allocated dynamically
+ *  @return void
+ */
+__kernel void kernel_GS(__global real* x, __global const real* A, __global const real* b,
+	__global real* resid, const int N, const real omega, __local real *x_shared)
 {
-	size_t ix = get_global_id(0);
+	size_t ix = get_global_id(0); /**< global work item ID */
 	if (ix < N)
 	{
-		size_t ix_temp = get_local_id(0);
+		/* Copy \a x to shared memory \a x_shared */
+		size_t ix_temp = get_local_id(0); /**< local work item ID */
 		while (ix_temp < N)
 		{
 			x_shared[ix_temp] = x[ix_temp];
-			ix_temp += get_local_size(0);
+			ix_temp += get_local_size(0); /**< local work group size */
 		}
-
+		/* Synchronization */
 		barrier(CLK_LOCAL_MEM_FENCE);
 
-		real temp = 0;
+		real temp = 0; /**< dummy variable */
 		for (size_t jy = 0; jy < N; jy++)
 		{
 			if (jy != ix)
@@ -34,39 +47,44 @@ __kernel void kernel_GS(__global real* x, __global const real* A, __global const
 				temp += A(ix, jy) * x_shared[jy];
 			}
 		}
-
 		temp = (1.0 - omega)*x_shared[ix] + omega / A(ix, ix)*(b[ix] - temp);
 
+		/* Residual calculation */
 		resid[ix] = fabs(temp - x_shared[ix]);
+		/* Updating \x */
 		x[ix] = temp;
 	}
 }
 
 
-__kernel void block_sum(__global const real *input, __global real *per_block_results, const int n, __local real *sdata)
+__kernel void block_sum(__global const real *in_array, 
+	__global real *out_results, const int N, 
+	__local real *in_array_shared)
 {
-	size_t i = get_global_id(0);
-
+	size_t ix = get_global_id(0); /**< global work item ID */
+	/* Copy \a in_array to shared memory \a in_array_shared */
 	real x = 0;
-	if (i < n)
+	if (ix < N)
 	{
-		x = input[i];
+		x = in_array[ix];
 	}
-
-	sdata[get_local_id(0)] = x;
+	in_array_shared[get_local_id(0)] = x;
+	/* Synchronization */
 	barrier(CLK_LOCAL_MEM_FENCE);
-	
-	for (int offset = get_local_size(0) / 2; offset > 0; offset >>= 1)
+
+	/* Reduction step */
+	for (int shift = get_local_size(0) / 2; shift > 0; shift >>= 1)
 	{
-		if (get_local_id(0) < offset)
+		if (get_local_id(0) < shift)
 		{
-			sdata[get_local_id(0)] += sdata[get_local_id(0) + offset];
+			in_array_shared[get_local_id(0)] += in_array_shared[get_local_id(0) + shift];
 		}
+		/* Synchronization */
 		barrier(CLK_LOCAL_MEM_FENCE);
 	}
-
+	/* Worker 0 writes final result out */
 	if (get_local_id(0) == 0)
 	{
-		per_block_results[get_group_id(0)] = sdata[0];
+		out_results[get_group_id(0)] = in_array_shared[0];
 	}
 }
