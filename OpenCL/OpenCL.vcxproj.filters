@@ -20,6 +20,12 @@
     <ClCompile Include="GS.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="reset_arrays.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="safe_call.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="GS.cl">
@@ -28,6 +34,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="safe_call.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="reset_arrays.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="precision.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

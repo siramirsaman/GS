@@ -157,12 +157,17 @@
   <ItemGroup>
     <ClCompile Include="GS.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="reset_arrays.cpp" />
+    <ClCompile Include="safe_call.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="GS.cl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GS.h" />
+    <ClInclude Include="precision.h" />
+    <ClInclude Include="reset_arrays.h" />
+    <ClInclude Include="safe_call.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

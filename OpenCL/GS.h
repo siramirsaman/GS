@@ -1,22 +1,17 @@
-#if CONFIG_USE_DOUBLE
-#if defined(cl_khr_fp64)
-#pragma OPENCL EXTENSION cl_khr_fp64 : enable
-#elif defined(cl_amd_fp64)
-#pragma OPENCL EXTENSION cl_amd_fp64 : enable
-#endif
-typedef double real;
-#else
-typedef float real;
-#endif
+
+#ifndef GS_DEF
+#define GS_DEF
+
+#include"precision.h"
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
 
 #ifdef __APPLE__
-#include <OpenCL/opencl.h>
+	#include <OpenCL/opencl.h>
 #else
-#include <CL/cl.h>
+	#include <CL/cl.h>
 #endif
 
 #include <math.h>
@@ -26,4 +21,14 @@ typedef float real;
 #define A(i,j) A[i+j*N]
 
 
-int GS(void);
+#include "reset_arrays.h"
+
+int GS(cl_context context, cl_device_id device_id, cl_command_queue command_queue,
+	cl_mem x_mem_obj, cl_mem a_mem_obj, cl_mem b_mem_obj, cl_mem resid_mem_obj,
+	cl_mem partial_sums_mem_obj, cl_mem partial_sums_mem_obj_num_blocks,
+	real *x_out, real *A, real *x, real *b, real *resid, real *partial_sums,
+	int N, real omega, real tol,
+	size_t block_size, size_t num_blocks, size_t local_item_size, size_t global_item_size);
+
+#endif
+
