@@ -3,6 +3,25 @@
 
 #include "GS.h"
 
+class Linear_System
+{
+public:
+	real * A; /**< array of coefficients [N*N] */
+	real * x; /**< array of unknowns [N] */
+	real * b; /**< array of constant terms [N] */
+	Linear_System(int N)
+	{
+		A = (real *)malloc(sizeof(real) *N*N);
+		x = (real *)malloc(sizeof(real) *N);
+		b = (real *)malloc(sizeof(real) *N);
+	}
+	~Linear_System()
+	{
+		free(A);
+		free(x);
+		free(b);
+	}
+};
 
 int main(void)
 {	
@@ -16,14 +35,13 @@ int main(void)
 	size_t block_size = 64; /**< global_work_size for block_sum */
 	size_t num_blocks = N; /**< local_work_size for block_sum*/
 
-	real * A = (real *)malloc(sizeof(real) *N*N); /**< array of coefficients [N*N] */
-	real * x = (real *)malloc(sizeof(real) *N); /**< array of unknowns [N] */
-	real * b = (real *)malloc(sizeof(real) *N); /**< array of constant terms [N] */
+	Linear_System linear_system_1(N);
+
 	real * resid = (real *)malloc(sizeof(real) *N); /**< array of residuals */
 	real * partial_sums = (real *)malloc(sizeof(real) *num_blocks); /**< array of residual summations */
 
 	/* Initialize a simple linear A.x=b */
-	reset_arrays(A, x, b, N);
+	reset_arrays(linear_system_1.A, linear_system_1.x, linear_system_1.b, N);
 
 	/* Platform & device info */
 	cl_platform_id platform_id = NULL; /**< list of OpenCL platforms */
@@ -69,16 +87,16 @@ int main(void)
 	cl_mem partial_sums_mem_obj_num_blocks = clCreateSubBuffer(partial_sums_mem_obj, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &region, NULL);
 
 	/* Copy arrays to device memory buffers */
-	safe_call(clEnqueueWriteBuffer(command_queue, a_mem_obj, CL_TRUE, 0, sizeof(real) *N*N, A, 0, NULL, NULL));
-	safe_call(clEnqueueWriteBuffer(command_queue, x_mem_obj, CL_TRUE, 0, sizeof(real) *N, x, 0, NULL, NULL));
-	safe_call(clEnqueueWriteBuffer(command_queue, b_mem_obj, CL_TRUE, 0, sizeof(real) *N, b, 0, NULL, NULL));
+	safe_call(clEnqueueWriteBuffer(command_queue, a_mem_obj, CL_TRUE, 0, sizeof(real) *N*N, linear_system_1.A, 0, NULL, NULL));
+	safe_call(clEnqueueWriteBuffer(command_queue, x_mem_obj, CL_TRUE, 0, sizeof(real) *N, linear_system_1.x, 0, NULL, NULL));
+	safe_call(clEnqueueWriteBuffer(command_queue, b_mem_obj, CL_TRUE, 0, sizeof(real) *N, linear_system_1.b, 0, NULL, NULL));
 
 	real *x_out = (real*)malloc(sizeof(real) * N); /**< array of solved unknowns for \a x */
 
 	GS(context, device_id, command_queue, 
 		x_mem_obj, a_mem_obj, b_mem_obj, resid_mem_obj, 
 		partial_sums_mem_obj, partial_sums_mem_obj_num_blocks, 
-		x_out, A, x, b, resid, partial_sums,
+		x_out, linear_system_1.A, linear_system_1.x, linear_system_1.b, resid, partial_sums,
 		N, omega, tol,
 		block_size, num_blocks, local_item_size, global_item_size);
 
@@ -94,10 +112,7 @@ int main(void)
 	safe_call(clReleaseContext(context));
 
 	/* Free memory */
-	free(A);
-	free(x);
 	free(x_out);
-	free(b);
 	free(resid);
 	free(partial_sums);
 
