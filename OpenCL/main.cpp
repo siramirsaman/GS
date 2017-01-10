@@ -99,5 +99,4 @@ int main(void)
 	free(partial_sums);
 
 	return 0;
-
 }
